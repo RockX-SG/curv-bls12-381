@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 bls12_381 = { version = "0.7", features = ["zeroize", "experimental"] }
-curv-kzen = { verion = "0.9", default-features = false }
+curv-kzen = { version = "0.9", default-features = false }
 zeroize = "1.5"
 generic-array = "0.14"
 hex = { version = "0.4", features = ["serde"] }

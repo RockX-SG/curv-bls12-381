@@ -9,6 +9,7 @@ use curv::elliptic::curves::{DeserializationError, ECScalar};
 use generic_array::GenericArray;
 use pairing::group::ff::{Field, PrimeField};
 use rand::rngs::OsRng;
+use zeroize::Zeroize;
 
 use serde::de::{self, Visitor};
 use serde::ser::{Serialize, Serializer};
@@ -190,6 +191,12 @@ impl fmt::Debug for FieldScalar {
 impl PartialEq for FieldScalar {
     fn eq(&self, other: &FieldScalar) -> bool {
         self.fe == other.fe
+    }
+}
+
+impl Zeroize for FieldScalar {
+    fn zeroize(&mut self) {
+        self.fe.zeroize()
     }
 }
 
