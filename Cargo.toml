@@ -1,0 +1,21 @@
+[package]
+name = "curv-bls12-381"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bls12_381 = { version = "0.7", features = ["zeroize", "experimental"] }
+curv-kzen = { verion = "0.9", default-features = false }
+zeroize = "1.5"
+generic-array = "0.14"
+hex = { version = "0.4", features = ["serde"] }
+lazy_static = "1.4"
+pairing = "0.22"
+typenum = "1.15.0"
+rand = "0.8"
+sha2 = "0.9.9"
+
+[features]
+default = ["rust-gmp-kzen"]
+rust-gmp-kzen = ["curv-kzen/rust-gmp-kzen"]
+num-bigint = ["curv-kzen/num-bigint"]
