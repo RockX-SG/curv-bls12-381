@@ -10,6 +10,11 @@ use generic_array::GenericArray;
 use pairing::group::Curve as pCurve;
 use zeroize::Zeroize;
 
+use serde::de::{Error, MapAccess, SeqAccess, Visitor};
+use serde::ser::SerializeStruct;
+use serde::ser::{Serialize, Serializer};
+use serde::{Deserialize, Deserializer};
+
 use super::scalar::FieldScalar;
 
 lazy_static::lazy_static! {
@@ -283,6 +288,71 @@ impl Zeroize for G1Point {
         self.ge.zeroize()
     }
 }
+
+
+impl Serialize for G1Point {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+    {
+        let bytes = self.serialize_compressed();
+        let bytes_as_bn = BigInt::from_bytes(&bytes[..]);
+        let mut state = serializer.serialize_struct("Bls12381G1Point", 1)?;
+        state.serialize_field("bytes_str", &bytes_as_bn.to_hex())?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for G1Point {
+    fn deserialize<D>(deserializer: D) -> Result<G1Point, D::Error>
+        where
+            D: Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &["bytes_str"];
+        deserializer.deserialize_struct("Bls12381G1Point", FIELDS, Bls12381G1PointVisitor)
+    }
+}
+
+struct Bls12381G1PointVisitor;
+
+impl<'de> Visitor<'de> for Bls12381G1PointVisitor {
+    type Value = G1Point;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("Bls12381G1Point")
+    }
+
+    fn visit_seq<V>(self, mut seq: V) -> Result<G1Point, V::Error>
+        where
+            V: SeqAccess<'de>,
+    {
+        let bytes_str = seq
+            .next_element()?
+            .ok_or_else(|| V::Error::invalid_length(0, &"a single element"))?;
+        let bytes_bn = BigInt::from_hex(bytes_str).map_err(V::Error::custom)?;
+        let bytes = BigInt::to_bytes(&bytes_bn);
+        <G1Point as ECPoint>::deserialize(&bytes[..]).map_err(|_| V::Error::custom("failed to parse g1 point"))
+    }
+
+    fn visit_map<E: MapAccess<'de>>(self, mut map: E) -> Result<G1Point, E::Error> {
+        let mut bytes_str: String = "".to_string();
+
+        while let Some(key) = map.next_key::<&'de str>()? {
+            let v = map.next_value::<&'de str>()?;
+            match key {
+                "bytes_str" => {
+                    bytes_str = String::from(v);
+                }
+                _ => return Err(E::Error::unknown_field(key, &["bytes_str"])),
+            }
+        }
+        let bytes_bn = BigInt::from_hex(&bytes_str).map_err(E::Error::custom)?;
+        let bytes = BigInt::to_bytes(&bytes_bn);
+
+        <G1Point as ECPoint>::deserialize(&bytes[..]).map_err(|_| E::Error::custom("failed to parse g1 point"))
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

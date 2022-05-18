@@ -10,6 +10,10 @@ use generic_array::GenericArray;
 use pairing::group::ff::{Field, PrimeField};
 use rand::rngs::OsRng;
 
+use serde::de::{self, Visitor};
+use serde::ser::{Serialize, Serializer};
+use serde::{Deserialize, Deserializer};
+
 lazy_static::lazy_static! {
     static ref GROUP_ORDER: BigInt = {
         let q_u64: [u64; 4] = [
@@ -186,5 +190,38 @@ impl fmt::Debug for FieldScalar {
 impl PartialEq for FieldScalar {
     fn eq(&self, other: &FieldScalar) -> bool {
         self.fe == other.fe
+    }
+}
+
+impl Serialize for FieldScalar {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+    {
+        serializer.serialize_str(&self.to_bigint().to_hex())
+    }
+}
+
+impl<'de> Deserialize<'de> for FieldScalar {
+    fn deserialize<D>(deserializer: D) -> Result<FieldScalar, D::Error>
+        where
+            D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(BLS12_381ScalarVisitor)
+    }
+}
+
+struct BLS12_381ScalarVisitor;
+
+impl<'de> Visitor<'de> for BLS12_381ScalarVisitor {
+    type Value = FieldScalar;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("bls12_381")
+    }
+
+    fn visit_str<E: de::Error>(self, s: &str) -> Result<FieldScalar, E> {
+        let v = BigInt::from_hex(s).map_err(E::custom)?;
+        Ok(ECScalar::from_bigint(&v))
     }
 }
