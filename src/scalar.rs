@@ -95,11 +95,15 @@ impl ECScalar for FieldScalar {
         let mut bytes_array_sk = [0u8; SECRET_KEY_SIZE];
         bytes_array_sk.copy_from_slice(&bytes[..SECRET_KEY_SIZE]);
 
-        let sk = SK::from_repr(bytes_array_sk).unwrap();
+        let sk = SK::from_repr(bytes_array_sk);
+
+        if sk.is_none().into() {
+            return Err(DeserializationError)
+        }
 
         Ok(FieldScalar {
             purpose: "deserialize",
-            fe: sk.into(),
+            fe: sk.unwrap().into(),
         })
     }
 
