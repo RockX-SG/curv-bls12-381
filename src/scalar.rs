@@ -63,12 +63,13 @@ impl ECScalar for FieldScalar {
     }
 
     fn from_bigint(n: &BigInt) -> FieldScalar {
-        let bytes = n
+        let mut le_bytes = n
             .modulus(Self::group_order())
             .to_bytes_array::<SECRET_KEY_SIZE>()
             .expect("n mod curve_order must be equal or less than 32 bytes");
+        le_bytes.reverse();
 
-        let sk = SK::from_repr(bytes).unwrap();
+        let sk = SK::from_repr(le_bytes).unwrap();
         FieldScalar {
             purpose: "from_bigint",
             fe: sk,
@@ -79,6 +80,7 @@ impl ECScalar for FieldScalar {
         let repr = self.fe.to_repr();
         let mut be_bytes = [0u8; SECRET_KEY_SIZE];
         be_bytes.copy_from_slice(repr.as_slice());
+        be_bytes.reverse();
         BigInt::from_bytes(&be_bytes)
     }
 
