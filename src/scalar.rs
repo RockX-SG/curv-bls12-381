@@ -79,7 +79,6 @@ impl ECScalar for FieldScalar {
         let repr = self.fe.to_repr();
         let mut be_bytes = [0u8; SECRET_KEY_SIZE];
         be_bytes.copy_from_slice(repr.as_slice());
-        be_bytes.reverse();
         BigInt::from_bytes(&be_bytes)
     }
 
@@ -231,4 +230,23 @@ impl<'de> Visitor<'de> for BLS12_381ScalarVisitor {
         let v = BigInt::from_hex(s).map_err(E::custom)?;
         Ok(ECScalar::from_bigint(&v))
     }
+}
+
+#[test]
+fn test_serde(){
+    use serde::{Serialize, Deserialize};
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    struct Wrapper {
+        inner: FieldScalar
+    }
+    let wrapper = Wrapper{
+        inner: FieldScalar {
+            purpose: "example",
+            fe: SK::one(),
+        }
+    };
+    let json_str = serde_json::to_string(&wrapper);
+    assert!(json_str.is_ok());
+    let deserialized = serde_json::from_slice::<Wrapper>(json_str.unwrap().as_bytes());
+    assert_eq!(wrapper.inner.fe, deserialized.unwrap().inner.fe);
 }

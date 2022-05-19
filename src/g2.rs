@@ -358,3 +358,22 @@ impl<'de> Visitor<'de> for Bls12381G2PointVisitor {
         <G2Point as ECPoint>::deserialize(&bytes[..]).map_err(|_| E::Error::custom("failed to parse g2 point"))
     }
 }
+
+#[test]
+fn test_serde(){
+    use serde::{Serialize, Deserialize};
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    struct Wrapper {
+        inner: G2Point
+    }
+    let wrapper = Wrapper{
+        inner: G2Point {
+            purpose: "example",
+            ge: PK::generator(),
+        }
+    };
+    let json_str = serde_json::to_string(&wrapper);
+    assert!(json_str.is_ok());
+    let deserialized = serde_json::from_slice::<Wrapper>(json_str.unwrap().as_bytes());
+    assert_eq!(wrapper.inner.ge, deserialized.unwrap().inner.ge);
+}

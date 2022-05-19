@@ -16,6 +16,9 @@ rand = "0.8"
 sha2 = "0.9.9"
 serde = { version = "1.0", features = ["derive"] }
 
+[dev-dependencies]
+serde_json = "1.0"
+
 [features]
 default = ["rust-gmp-kzen"]
 rust-gmp-kzen = ["curv-kzen/rust-gmp-kzen"]

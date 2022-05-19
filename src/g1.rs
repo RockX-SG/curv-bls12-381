@@ -353,6 +353,24 @@ impl<'de> Visitor<'de> for Bls12381G1PointVisitor {
     }
 }
 
+#[test]
+fn test_serde(){
+    use serde::{Serialize, Deserialize};
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    struct Wrapper {
+        inner: G1Point
+    }
+    let wrapper = Wrapper{
+        inner: G1Point {
+            purpose: "example",
+            ge: PK::generator(),
+        }
+    };
+    let json_str = serde_json::to_string(&wrapper);
+    assert!(json_str.is_ok());
+    let deserialized = serde_json::from_slice::<Wrapper>(json_str.unwrap().as_bytes());
+    assert_eq!(wrapper.inner.ge, deserialized.unwrap().inner.ge);
+}
 
 #[cfg(test)]
 mod tests {
