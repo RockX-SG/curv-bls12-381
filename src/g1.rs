@@ -8,12 +8,11 @@ use curv::BigInt;
 use curv::elliptic::curves::{Curve, DeserializationError, ECPoint, ECScalar, NotOnCurve, PointCoords};
 use generic_array::GenericArray;
 use pairing::group::Curve as pCurve;
-use zeroize::Zeroize;
-
-use serde::de::{Error, MapAccess, SeqAccess, Visitor};
-use serde::ser::SerializeStruct;
-use serde::ser::{Serialize, Serializer};
 use serde::{Deserialize, Deserializer};
+use serde::de::{Error, MapAccess, SeqAccess, Visitor};
+use serde::ser::{Serialize, Serializer};
+use serde::ser::SerializeStruct;
+use zeroize::Zeroize;
 
 use super::scalar::FieldScalar;
 
@@ -27,12 +26,11 @@ lazy_static::lazy_static! {
         const BASE_POINT2: [u8; 96] = [
             10, 18, 122, 36, 178, 251, 236, 31, 139, 88, 242, 163, 21, 198, 168, 208, 122, 195,
             135, 122, 7, 153, 197, 255, 160, 0, 89, 138, 39, 245, 105, 108, 99, 113, 78, 70, 130,
-            172, 183, 57, 170, 180, 39, 32, 173, 29, 238, 62, 13, 166, 109, 90, 181, 17, 76, 247,
-            26, 155, 130, 211, 18, 42, 235, 137, 225, 184, 210, 140, 54, 83, 233, 228, 226, 70,
-            194, 50, 55, 116, 229, 2, 115, 227, 223, 31, 165, 39, 191, 209, 49, 127, 106, 196, 123,
-            71, 70, 243,
+            172, 183, 57, 170, 180, 39, 32, 173, 29, 238, 62, 12, 90, 164, 143, 132, 110, 153,
+            163, 48, 128, 36, 227, 49, 32, 193, 77, 130, 190, 120, 248, 189, 49, 40, 218, 132,
+            234, 16, 110, 191, 60, 17, 33, 170, 200, 32, 223, 12, 44, 64, 46, 136, 127, 149, 59,
+            132, 184, 99, 184
         ];
-
         let g1_affine = bls12_381::G1Affine::from_uncompressed(&BASE_POINT2);
         G1Point {
             purpose: "base_point2",
@@ -252,7 +250,11 @@ impl ECPoint for G1Point {
 
 impl G1Point {
     fn in_subgroup(&self) -> bool {
-        bool::from(self.ge.is_on_curve()) && bool::from(self.ge.is_torsion_free())// TODO: Check this
+        bool::from(self.ge.is_on_curve()) && self.is_in_correct_subgroup_assuming_on_curve()
+    }
+
+    fn is_in_correct_subgroup_assuming_on_curve(&self) -> bool {
+        self.scalar_mul(&FieldScalar::from_bigint(FieldScalar::group_order())).is_zero()
     }
 
     pub fn hash_to_curve(message: &[u8], dst: &[u8]) -> Self {
@@ -354,13 +356,13 @@ impl<'de> Visitor<'de> for Bls12381G1PointVisitor {
 }
 
 #[test]
-fn test_serde(){
+fn test_serde() {
     use serde::{Serialize, Deserialize};
     #[derive(Debug, PartialEq, Serialize, Deserialize)]
     struct Wrapper {
-        inner: G1Point
+        inner: G1Point,
     }
-    let wrapper = Wrapper{
+    let wrapper = Wrapper {
         inner: G1Point {
             purpose: "example",
             ge: PK::generator(),
@@ -374,30 +376,180 @@ fn test_serde(){
 
 #[cfg(test)]
 mod tests {
-    /*
-    use pairing_plus::bls12_381::{G1Uncompressed, G1};
-    use pairing_plus::hash_to_curve::HashToCurve;
-    use pairing_plus::hash_to_field::ExpandMsgXmd;
-    use pairing_plus::{CurveProjective, SubgroupCheck};
+    use bls12_381::G1Projective;
+    use bls12_381::hash_to_curve::{ExpandMsgXmd, HashToCurve};
+    use curv::arithmetic::{Converter, Modulo};
+    use curv::BigInt;
+    use curv::elliptic::curves::ECScalar;
+    use pairing::group::Curve;
 
-    use super::{ECPoint, GE1};
+    use crate::g1::{G1Point, GE1};
+    use crate::scalar::FieldScalar;
+
+    use super::ECPoint;
+
+    #[test]
+    fn test_serdes_pk() {
+        let pk = *GE1::generator();
+        let s = serde_json::to_string(&pk).expect("Failed in serialization");
+        let des_pk: GE1 = serde_json::from_str(&s).expect("Failed in deserialization");
+        assert_eq!(des_pk, pk);
+
+        let pk = *GE1::base_point2();
+        let s = serde_json::to_string(&pk).expect("Failed in serialization");
+        let des_pk: GE1 = serde_json::from_str(&s).expect("Failed in deserialization");
+        assert_eq!(des_pk, pk);
+    }
+
+    #[test]
+    fn bincode_pk() {
+        let pk = *GE1::generator();
+        let bin = bincode::serialize(&pk).unwrap();
+        let decoded: G1Point = bincode::deserialize(bin.as_slice()).unwrap();
+        assert_eq!(decoded, pk);
+    }
+
+    #[test]
+    #[should_panic]
+    #[allow(clippy::op_ref)] // Enables type inference.
+    fn test_serdes_bad_pk() {
+        let pk = *GE1::generator();
+        let s = serde_json::to_string(&pk).expect("Failed in serialization");
+        // we make sure that the string encodes invalid point:
+        let s: String = s.replace("30", "20");
+        let des_pk: GE1 = serde_json::from_str(&s).expect("Failed in deserialization");
+        let eight = ECScalar::from_bigint(&BigInt::from(8));
+        assert_eq!(des_pk, pk.scalar_mul(&eight));
+    }
+
+    #[test]
+    fn test_from_mpz() {
+        let rand_scalar: FieldScalar = ECScalar::random();
+        let rand_bn = rand_scalar.to_bigint();
+        let rand_scalar2: FieldScalar = ECScalar::from_bigint(&rand_bn);
+        assert_eq!(rand_scalar, rand_scalar2);
+    }
+
+    #[test]
+    fn test_minus_point() {
+        let a: FieldScalar = ECScalar::random();
+        let b: FieldScalar = ECScalar::random();
+        let a_minus_b_fe: FieldScalar = a.sub(&b);
+        let base: GE1 = *ECPoint::generator();
+
+        let point_ab1 = base.scalar_mul(&a_minus_b_fe);
+        let point_a = base.scalar_mul(&a);
+        let point_b = base.scalar_mul(&b);
+        let point_ab2 = point_a.sub_point(&point_b);
+        println!(
+            "point ab1: {:?}",
+            hex::encode(point_ab1.serialize_compressed())
+        );
+        println!(
+            "point ab2: {:?}",
+            hex::encode(point_ab2.serialize_compressed())
+        );
+
+        assert_eq!(point_ab1, point_ab2);
+    }
+
+    #[test]
+    fn test_add_point() {
+        let a: FieldScalar = ECScalar::random();
+        let b: FieldScalar = ECScalar::random();
+        let a_plus_b_fe = a.add(&b);
+        let base: GE1 = *ECPoint::generator();
+        let point_ab1 = base.scalar_mul(&a_plus_b_fe);
+        let point_a = base.scalar_mul(&a);
+        let point_b = base.scalar_mul(&b);
+        let point_ab2 = point_a.add_point(&point_b);
+
+        assert_eq!(point_ab1, point_ab2);
+    }
+
+    #[test]
+    fn test_add_scalar() {
+        let a: FieldScalar = ECScalar::random();
+        let zero: FieldScalar = FieldScalar::zero();
+        let a_plus_zero: FieldScalar = a.add(&zero);
+
+        assert_eq!(a_plus_zero, a);
+    }
+
+    #[test]
+    fn test_mul_scalar() {
+        let a = [
+            10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 10, 10, 10,
+        ];
+
+        let a_bn = BigInt::from_bytes(&a[..]);
+        let a_fe: FieldScalar = ECScalar::from_bigint(&a_bn);
+
+        let five = BigInt::from(5);
+        let five_fe: FieldScalar = ECScalar::from_bigint(&five);
+        println!("five_fe: {:?}", five_fe.clone());
+        let five_a_bn = BigInt::mod_mul(&a_bn, &five, &FieldScalar::group_order());
+        let five_a_fe = five_fe.mul(&a_fe);
+        let five_a_fe_2: FieldScalar = ECScalar::from_bigint(&five_a_bn);
+
+        assert_eq!(five_a_fe, five_a_fe_2);
+    }
+
+    #[test]
+    fn test_mul_point() {
+        let a: FieldScalar = ECScalar::random();
+        let b: FieldScalar = ECScalar::random();
+        let a_mul_b_fe = a.mul(&b); // a*b
+        let base: GE1 = *ECPoint::generator();
+        let point_ab1 = base.scalar_mul(&a_mul_b_fe); // G * (a*b)
+        let point_a = base.scalar_mul(&a); // G * a
+        let point_ab2 = point_a.scalar_mul(&b); // G * a * b
+
+        assert_eq!(point_ab1, point_ab2);
+    }
+
+    #[test]
+    fn test_invert() {
+        let a: FieldScalar = ECScalar::random();
+
+        let a_bn = a.to_bigint();
+
+        let a_inv = a.invert().unwrap();
+        let a_inv_bn_1 = BigInt::mod_inv(&a_bn, &FieldScalar::group_order()).unwrap();
+        let a_inv_bn_2 = a_inv.to_bigint();
+
+        assert_eq!(a_inv_bn_1, a_inv_bn_2);
+    }
+
+    #[test]
+    fn test_scalar_mul_multiply_by_1() {
+        let g: GE1 = *ECPoint::generator();
+
+        let fe: FieldScalar = ECScalar::from_bigint(&BigInt::from(1));
+        let b_tag = g.scalar_mul(&fe);
+        assert_eq!(b_tag, g);
+    }
 
     #[test]
     fn base_point2_nothing_up_my_sleeve() {
         // Generate base_point2
         let cs = &[1u8];
         let msg = &[1u8];
-        let point = <G1 as HashToCurve<ExpandMsgXmd<old_sha2::Sha256>>>::hash_to_curve(msg, cs)
-            .into_affine();
+        println!("{}", hex::encode(cs));
+        println!("{}", hex::encode(msg));
+        let projective = <G1Projective as HashToCurve<ExpandMsgXmd<sha2::Sha256>>>::hash_to_curve(msg, cs);
+        let point = G1Point {
+            purpose: "test",
+            ge: projective.to_affine(),
+        };
+
         assert!(point.in_subgroup());
 
-        // Print in uncompressed form
-        use pairing_plus::EncodedPoint;
-        let point_uncompressed = G1Uncompressed::from_affine(point);
-        println!("Uncompressed base_point2: {:?}", point_uncompressed);
-
         // Check that ECPoint::base_point2() returns generated point
-        let base_point2: &GE1 = ECPoint::base_point2();
-        assert_eq!(point, base_point2.ge);
-    }*/
+        let base_point2 = G1Point::base_point2();
+
+        assert!(base_point2.in_subgroup());
+        assert_eq!(projective.to_affine(), base_point2.ge);
+    }
 }

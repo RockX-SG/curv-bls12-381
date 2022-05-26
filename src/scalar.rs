@@ -9,11 +9,10 @@ use curv::elliptic::curves::{DeserializationError, ECScalar};
 use generic_array::GenericArray;
 use pairing::group::ff::{Field, PrimeField};
 use rand::rngs::OsRng;
-use zeroize::Zeroize;
-
+use serde::{Deserialize, Deserializer};
 use serde::de::{self, Visitor};
 use serde::ser::{Serialize, Serializer};
-use serde::{Deserialize, Deserializer};
+use zeroize::Zeroize;
 
 lazy_static::lazy_static! {
     static ref GROUP_ORDER: BigInt = {
@@ -100,7 +99,7 @@ impl ECScalar for FieldScalar {
         let sk = SK::from_repr(bytes_array_sk);
 
         if sk.is_none().into() {
-            return Err(DeserializationError)
+            return Err(DeserializationError);
         }
 
         Ok(FieldScalar {
@@ -239,13 +238,13 @@ impl<'de> Visitor<'de> for BLS12_381ScalarVisitor {
 }
 
 #[test]
-fn test_serde(){
+fn test_serde() {
     use serde::{Serialize, Deserialize};
     #[derive(Debug, PartialEq, Serialize, Deserialize)]
     struct Wrapper {
-        inner: FieldScalar
+        inner: FieldScalar,
     }
-    let wrapper = Wrapper{
+    let wrapper = Wrapper {
         inner: FieldScalar {
             purpose: "example",
             fe: SK::one(),
