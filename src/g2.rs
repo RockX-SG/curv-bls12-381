@@ -67,7 +67,7 @@ impl Curve for Bls12_381_2 {
     type Point = GE2;
     type Scalar = FieldScalar;
 
-    const CURVE_NAME: &'static str = "bls12_381_1";
+    const CURVE_NAME: &'static str = "bls12_381_2";
 }
 
 impl ECPoint for G2Point {
